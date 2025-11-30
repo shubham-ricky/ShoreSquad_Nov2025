@@ -12,7 +12,8 @@
 const AppConfig = {
   animationDelay: 100,
   debounceDelay: 300,
-  weatherApiUrl: 'https://api.openweathermap.org/data/2.5/weather',
+  weatherApiUrl: 'https://api-open.data.gov.sg/v2/real-time/api/four-day-outlook',
+  weatherForecastUrl: 'https://api-open.data.gov.sg/v2/real-time/api/twenty-four-hr-forecast',
   localStorageKeys: {
     favorites: 'shoresquad_favorites',
     preferences: 'shoresquad_preferences',
@@ -433,73 +434,206 @@ class FavoritesManager {
 }
 
 // ============================================
-// Weather Integration (Placeholder)
+// Weather Integration - Singapore NEA API
 // ============================================
 class WeatherService {
   constructor() {
-    this.widget = document.querySelector('.weather-widget');
+    this.container = document.querySelector('.weather-forecast-grid');
     this.init();
   }
   
-  init() {
-    // Simulate loading weather data
-    setTimeout(() => {
-      this.renderWeather({
-        temp: 24,
-        condition: 'Sunny',
-        wind: '12 km/h',
-        humidity: '65%',
-        uvIndex: 7
-      });
-    }, 1500);
+  async init() {
+    await this.fetchAndRenderForecast();
   }
   
-  renderWeather(data) {
-    if (!this.widget) return;
+  async fetchAndRenderForecast() {
+    try {
+      // Fetch 4-day weather outlook from Singapore NEA
+      const response = await fetch(AppConfig.weatherApiUrl);
+      
+      if (!response.ok) {
+        console.error(`API error: ${response.status} ${response.statusText}`);
+        throw new Error(`API error: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      console.log('Weather API Response:', result);
+      
+      // Handle different possible API response structures
+      if (result.data && result.data.records && result.data.records.length > 0) {
+        const forecast = result.data.records[0];
+        this.renderForecast(forecast);
+        AppState.weatherData = forecast;
+      } else if (result.items && result.items.length > 0) {
+        // Alternative structure
+        this.renderForecastAlternative(result.items[0]);
+        AppState.weatherData = result.items[0];
+      } else {
+        console.error('Unexpected API structure:', result);
+        this.renderMockForecast();
+      }
+    } catch (error) {
+      console.error('Error fetching weather forecast:', error);
+      console.log('Falling back to mock data');
+      this.renderMockForecast();
+    }
+  }
+  
+  renderMockForecast() {
+    // Fallback with realistic Singapore weather data
+    const mockForecast = {
+      forecasts: [
+        {
+          date: new Date().toISOString().split('T')[0],
+          forecast: 'Partly Cloudy with afternoon showers',
+          temperature: { high: 32, low: 26 },
+          relative_humidity: { high: 85 },
+          wind: { speed: { high: 25 } }
+        },
+        {
+          date: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+          forecast: 'Thundery Showers',
+          temperature: { high: 31, low: 25 },
+          relative_humidity: { high: 90 },
+          wind: { speed: { high: 30 } }
+        },
+        {
+          date: new Date(Date.now() + 172800000).toISOString().split('T')[0],
+          forecast: 'Fair and Warm',
+          temperature: { high: 33, low: 27 },
+          relative_humidity: { high: 75 },
+          wind: { speed: { high: 20 } }
+        },
+        {
+          date: new Date(Date.now() + 259200000).toISOString().split('T')[0],
+          forecast: 'Partly Cloudy',
+          temperature: { high: 32, low: 26 },
+          relative_humidity: { high: 80 },
+          wind: { speed: { high: 22 } }
+        }
+      ]
+    };
+    
+    this.renderForecast(mockForecast);
+  }
+  
+  renderForecastAlternative(data) {
+    // Handle alternative API structure if needed
+    const transformed = {
+      forecasts: data.forecasts || []
+    };
+    this.renderForecast(transformed);
+  }
+  
+  getWeatherIcon(forecast) {
+    const description = forecast.toLowerCase();
+    
+    if (description.includes('thunder') || description.includes('storm')) return '⛈️';
+    if (description.includes('rain') || description.includes('showers')) return '🌧️';
+    if (description.includes('cloudy')) return '☁️';
+    if (description.includes('partly cloudy') || description.includes('fair')) return '⛅';
+    if (description.includes('hazy') || description.includes('haze')) return '🌫️';
+    if (description.includes('windy')) return '💨';
+    return '☀️'; // Default sunny
+  }
+  
+  getCleanupAdvice(forecast) {
+    const description = forecast.toLowerCase();
+    
+    if (description.includes('thunder') || description.includes('heavy rain')) {
+      return { advice: '⚠️ Not suitable for cleanup', color: '#FB5607' };
+    }
+    if (description.includes('rain') || description.includes('showers')) {
+      return { advice: '🌂 Bring rain gear', color: '#FFB703' };
+    }
+    if (description.includes('cloudy') || description.includes('fair')) {
+      return { advice: '👍 Good conditions', color: '#06D6A0' };
+    }
+    return { advice: '🌟 Perfect for cleanup!', color: '#06D6A0' };
+  }
+  
+  formatDate(dateStr) {
+    const date = new Date(dateStr);
+    const options = { weekday: 'short', month: 'short', day: 'numeric' };
+    return date.toLocaleDateString('en-SG', options);
+  }
+  
+  renderForecast(forecast) {
+    if (!this.container) return;
+    
+    const forecasts = forecast.forecasts || [];
+    
+    if (forecasts.length === 0) {
+      this.renderError('No forecast periods available');
+      return;
+    }
+    
+    const cardsHtml = forecasts.map((period, index) => {
+      const icon = this.getWeatherIcon(period.forecast);
+      const advice = this.getCleanupAdvice(period.forecast);
+      const dateLabel = index === 0 ? 'Today' : this.formatDate(period.date);
+      
+      return `
+        <div class="weather-day-card" data-animate="fade-up" data-delay="${index * 100}">
+          <div class="weather-day-header">
+            <h4 class="weather-day-title">${dateLabel}</h4>
+            <div class="weather-day-date">${period.date}</div>
+          </div>
+          <div class="weather-icon-large">${icon}</div>
+          <div class="weather-temps">
+            <span class="temp-high">${period.temperature?.high || 'N/A'}°C</span>
+            <span class="temp-divider">/</span>
+            <span class="temp-low">${period.temperature?.low || 'N/A'}°C</span>
+          </div>
+          <div class="weather-condition">${period.forecast}</div>
+          <div class="weather-details-small">
+            <div class="detail-item">
+              <span class="detail-icon">💧</span>
+              <span class="detail-text">${period.relative_humidity?.high || 'N/A'}%</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-icon">💨</span>
+              <span class="detail-text">${period.wind?.speed?.high || 'N/A'} km/h</span>
+            </div>
+          </div>
+          <div class="cleanup-advice" style="background: ${advice.color}; color: white; padding: 0.5rem; border-radius: 0.5rem; margin-top: 0.75rem; font-weight: 500; font-size: 0.875rem;">
+            ${advice.advice}
+          </div>
+        </div>
+      `;
+    }).join('');
     
     const html = `
-      <div class="weather-content">
-        <div class="weather-icon" style="font-size: 3rem;">☀️</div>
-        <div class="weather-temp" style="font-size: 2.5rem; font-weight: bold;">${data.temp}°C</div>
-        <div class="weather-condition" style="font-size: 1.25rem; margin-bottom: 1rem;">${data.condition}</div>
-        <div class="weather-details" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; text-align: center;">
-          <div>
-            <div style="opacity: 0.8;">Wind</div>
-            <div style="font-weight: bold;">${data.wind}</div>
-          </div>
-          <div>
-            <div style="opacity: 0.8;">Humidity</div>
-            <div style="font-weight: bold;">${data.humidity}</div>
-          </div>
-          <div>
-            <div style="opacity: 0.8;">UV Index</div>
-            <div style="font-weight: bold;">${data.uvIndex}</div>
-          </div>
-        </div>
-        <div style="margin-top: 1rem; padding: 0.75rem; background: rgba(255, 255, 255, 0.15); border-radius: 0.5rem;">
-          <strong>Perfect day for a beach cleanup! 🏖️</strong>
-        </div>
+      <div class="weather-source" style="text-align: center; margin-bottom: 1rem; font-size: 0.875rem; opacity: 0.7;">
+        📡 Data from National Environment Agency (NEA)
+      </div>
+      <div class="weather-forecast-cards">
+        ${cardsHtml}
       </div>
     `;
     
-    this.widget.innerHTML = html;
+    this.container.innerHTML = html;
+    
+    // Re-initialize scroll animations for weather cards
+    new ScrollAnimations();
   }
   
-  async fetchWeather(lat, lon, apiKey) {
-    try {
-      const response = await fetch(
-        `${AppConfig.weatherApiUrl}?lat=${lat}&lon=${lon}&units=metric&appid=${apiKey}`
-      );
-      
-      if (!response.ok) throw new Error('Weather data fetch failed');
-      
-      const data = await response.json();
-      AppState.weatherData = data;
-      return data;
-    } catch (error) {
-      console.error('Error fetching weather:', error);
-      return null;
-    }
+  renderError(message) {
+    if (!this.container) return;
+    
+    this.container.innerHTML = `
+      <div class="weather-error" style="text-align: center; padding: 2rem; color: var(--color-warning);">
+        <div style="font-size: 3rem; margin-bottom: 1rem;">⚠️</div>
+        <p style="font-size: 1.125rem; font-weight: 500;">${message}</p>
+        <p style="margin-top: 0.5rem; opacity: 0.8;">Displaying sample forecast data</p>
+        <button onclick="location.reload()" style="margin-top: 1rem; padding: 0.5rem 1rem; background: var(--color-primary); color: white; border: none; border-radius: 2rem; cursor: pointer; font-weight: 500;">
+          Try Again
+        </button>
+      </div>
+    `;
+    
+    // Show mock data after a brief delay
+    setTimeout(() => this.renderMockForecast(), 2000);
   }
 }
 

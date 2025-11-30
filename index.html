@@ -86,14 +86,15 @@
         <!-- Weather Widget -->
         <section class="weather-section" id="weather" aria-labelledby="weather-title">
             <div class="container">
-                <h3 id="weather-title" class="section-title">Today's Beach Conditions</h3>
-                <div class="weather-widget" role="region" aria-live="polite">
+                <h3 id="weather-title" class="section-title">4-Day Weather Forecast</h3>
+                <p style="text-align: center; margin-bottom: 2rem; color: var(--color-neutral-dark); opacity: 0.8;">Plan your beach cleanup with Singapore's weather outlook</p>
+                <div class="weather-forecast-grid" role="region" aria-live="polite">
                     <div class="weather-loading" aria-busy="true">
                         <div class="spinner" role="status">
-                            <span class="sr-only">Loading weather data...</span>
+                            <span class="sr-only">Loading weather forecast...</span>
                         </div>
                     </div>
-                    <!-- Weather data will be inserted here by JavaScript -->
+                    <!-- Weather forecast data will be inserted here by JavaScript -->
                 </div>
             </div>
         </section>
